@@ -3,39 +3,38 @@ import matplotlib.pyplot as plt
 def plot_series(data):
     """
     Graficar la serie temporal original.
-    
-    :param data: Serie temporal (array o lista de valores).
+
+    :param data: Serie temporal como lista o array.
     """
     plt.figure(figsize=(10, 5))
     plt.plot(data, label="Serie Original", color="blue")
     plt.title("Serie Temporal")
-    plt.xlabel("Tiempo")
-    plt.ylabel("Valor")
+    plt.xlabel("Índice de Tiempo")
+    plt.ylabel("Valor Normalizado")
     plt.legend()
     plt.grid(True)
+    plt.tight_layout()
     plt.show()
+
 
 def plot_detected_patterns(data, patterns):
     """
-    Graficar la serie temporal con los patrones detectados resaltados.
-    
-    :param data: Serie temporal (array o lista de valores).
-    :param patterns: Lista de patrones detectados [(start_idx, end_idx), ...].
+    Graficar la serie con ventanas resaltadas como patrones detectados.
+
+    :param data: Serie temporal como lista o array.
+    :param patterns: Lista de tuplas (start_idx, end_idx) de patrones detectados.
     """
     plt.figure(figsize=(10, 5))
     plt.plot(data, label="Serie Original", color="blue")
-    
-    # Resaltar cada patrón detectado
-    for start, end in patterns:
-        plt.axvspan(start, end, color="red", alpha=0.3, label="Patrón Detectado")
-    
-    # Asegurar que la leyenda no se repita
-    handles, labels = plt.gca().get_legend_handles_labels()
-    by_label = dict(zip(labels, handles))
-    plt.legend(by_label.values(), by_label.keys())
-    
+
+    for idx, (start, end) in enumerate(patterns):
+        plt.axvspan(start, end, color=f"C{idx % 10}", alpha=0.3, label=f"Patrón {idx + 1}")
+
     plt.title("Serie Temporal con Patrones Detectados")
-    plt.xlabel("Tiempo")
-    plt.ylabel("Valor")
+    plt.xlabel("Índice de Tiempo")
+    plt.ylabel("Valor Normalizado")
     plt.grid(True)
+    if patterns:
+        plt.legend()
+    plt.tight_layout()
     plt.show()

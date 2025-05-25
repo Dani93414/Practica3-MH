@@ -1,190 +1,89 @@
 import random
 import numpy as np
+from fastdtw import fastdtw
+from joblib import Parallel, delayed
+
 
 # =============================================
-# Inicialización de la Población
+# Inicialización de la Población (con múltiples ventanas)
 # =============================================
-def initialize_population(pop_size, window_length, data_length, data):
-
-    """
-    Genera una población inicial de individuos representados como índices
-    de fragmentos en las series temporales, asegurando que tengan variabilidad.
-    
-    :param pop_size: Número de individuos en la población
-    :param window_length: Longitud de las ventanas en la serie temporal
-    :param data_length: Longitud total de la serie temporal
-    :param data: Serie temporal (array numpy)
-    :return: Lista de individuos (ventanas representadas como índices)
-    """
-
+def initialize_population(population_size, window_length, data_length, data, n_windows=3):
     population = []
-    attempts = 0
-    max_attempts = pop_size * 10  # límite para evitar bucles infinitos
-
-
-
-    while len(population) < pop_size and attempts < max_attempts:
-
-        start_idx = random.randint(0, data_length - window_length - 1)
-
-        window = data[start_idx:start_idx + window_length]
-
-        if np.std(window) > 1e-6:  # evitar ventanas planas o casi constantes
-
-            individual = (start_idx, start_idx + window_length)
-
-            population.append(individual)
-
-        attempts += 1
-
-
-
-    if len(population) < pop_size:
-
-        print(f"Advertencia: solo se generaron {len(population)} individuos válidos de {pop_size}.")
-
-
-
+    for _ in range(population_size):
+        individual = []
+        for _ in range(n_windows):
+            start_idx = random.randint(0, data_length - window_length)
+            end_idx = start_idx + window_length
+            individual.append((start_idx, end_idx))
+        population.append(individual)
     return population
 
 
-
 # =============================================
-# Evaluación de Fitness
+# Evaluación de Fitness (múltiples ventanas)
 # =============================================
 def fitness_function(individual, data):
-    """
-    Calcula la función de fitness para un individuo basado en la similitud
-    de la ventana que representa con el resto de la serie temporal.
-
-    :param individual: Tuple (start_idx, end_idx)
-    :param data: Serie temporal (array numpy)
-    :return: Valor de fitness (float)
-    """
-    start, end = individual
-    window = data[start:end]
-
-    if len(window) < 5 or np.std(window) == 0:
-        return -np.inf
-
-    similarities = []
-
-
-    for i in range(0, len(data) - len(window)):
-        comp_window = data[i:i + len(window)]
-
-        if len(comp_window) == len(window) and np.std(comp_window) != 0:
-            corr = np.corrcoef(window, comp_window)[0, 1]
-            if not np.isnan(corr):
-                similarities.append(corr)
-
-
-
-    return np.mean(similarities) if similarities else -np.inf
-
-
+    scores = []
+    for start, end in individual:
+        window = data[start:end]
+        if len(window) < 5 or np.std(window) < 0.01:
+            continue
+        similarities = []
+        for i in range(len(data) - len(window)):
+            comp_window = data[i:i + len(window)]
+            if np.std(comp_window) < 0.01:
+                continue
+            dist, _ = fastdtw(window, comp_window)
+            similarity = 1 / (1 + dist)
+            similarities.append(similarity)
+        if similarities:
+            scores.append(np.mean(similarities))
+    return np.mean(scores) if scores else -np.inf
 
 
 # =============================================
-# Operador de Selección
+# Selección por Torneo
 # =============================================
 def tournament_selection(population, fitness_scores, tournament_size=3):
-    """
-    Selección por torneo.
-
-
-    :param population: Lista de individuos
-    :param fitness_scores: Lista de valores de fitness para los individuos
-    :param tournament_size: Tamaño del torneo
-    :return: Individuo ganador del torneo
-    """
     tournament = random.sample(list(zip(population, fitness_scores)), tournament_size)
-    winner = max(tournament, key=lambda x: x[1])  # Seleccionar el mejor fitness
-
+    winner = max(tournament, key=lambda x: x[1])
     return winner[0]
 
 
-
-
 # =============================================
-# Operador de Cruce
+# Cruce de Individuos con múltiples ventanas
 # =============================================
-def single_point_crossover(parent1, parent2, min_window_length=30):
-    """
-    Cruce de un punto entre dos padres.
-
-    :param parent1: Tuple (start_idx, end_idx)
-    :param parent2: Tuple (start_idx, end_idx)
-    :return: Dos hijos resultantes del cruce
-    """
-    p1_start, p1_end = parent1
-    p2_start, p2_end = parent2
-
-    len1 = p1_end - p1_start
-    len2 = p2_end - p2_start
-
-    min_len = min(len1, len2)
-
-    if min_len <= min_window_length:
-        return parent1, parent2
-
-
-    crossover_point = random.randint(min_window_length, min_len - 1)
-
-
-    child1 = (p1_start, p1_start + crossover_point)
-    child2 = (p2_start, p2_start + crossover_point)
-
-
+def single_point_crossover(parent1, parent2):
+    point = random.randint(1, len(parent1) - 1)
+    child1 = parent1[:point] + parent2[point:]
+    child2 = parent2[:point] + parent1[point:]
     return child1, child2
 
 
-
-
 # =============================================
-# Operador de Mutación
+# Mutación de Individuos
 # =============================================
-def mutation(individual, data_length, max_shift=5):
-    """
-    Mutación por cambio de índice en un individuo.
+def mutation(individual, data_length, max_shift=10):
+    mutated = []
+    for start, end in individual:
+        length = end - start
+        shift = random.randint(-max_shift, max_shift)
+        new_start = max(0, min(data_length - length, start + shift))
+        mutated.append((new_start, new_start + length))
+    return mutated
 
-    :param individual: Tuple (start_idx, end_idx)
-    :param data_length: Longitud de la serie temporal
-    :param max_shift: Máxima cantidad de cambio permitida
-    :return: Individuo mutado
-    """
-    start, end = individual
-    length = end - start
-    shift = random.randint(-max_shift, max_shift)
-
-    new_start = max(0, min(data_length - length, start + shift))
-    new_end = new_start + length
-
-    return new_start, new_end
 
 # =============================================
 # Algoritmo Evolutivo Principal
 # =============================================
-def run_evolutionary_algorithm(data, generations=100, population_size=20, window_length=50):
-    """
-    Ejecuta el algoritmo evolutivo para detectar patrones en la serie temporal.
-
-    :param data: Serie temporal (array numpy)
-    :param generations: Número de generaciones
-    :param population_size: Tamaño de la población
-    :param window_length: Longitud de las ventanas
-    :return: Individuo con el mejor fitness
-    """
-    # Inicialización de la población
-    population = initialize_population(population_size, window_length, len(data), data)
-
-
+def run_evolutionary_algorithm(data, generations=100, population_size=20, window_length=50, n_windows=3):
+    population = initialize_population(population_size, window_length, len(data), data, n_windows)
 
     for generation in range(generations):
-        # Evaluación de fitness
-        fitness_scores = [fitness_function(ind, data) for ind in population]
+        fitness_scores = Parallel(n_jobs=-1)(
+            delayed(fitness_function)(ind, data) for ind in population
+        )
 
-        # Selección, cruce y mutación
         new_population = []
         while len(new_population) < population_size:
             parent1 = tournament_selection(population, fitness_scores)
@@ -198,43 +97,64 @@ def run_evolutionary_algorithm(data, generations=100, population_size=20, window
 
         population = new_population[:population_size]
 
-    # Devolver el mejor individuo encontrado
+    fitness_scores = Parallel(n_jobs=-1)(
+        delayed(fitness_function)(ind, data) for ind in population
+    )
     best_individual = max(zip(population, fitness_scores), key=lambda x: x[1])
-    return best_individual[0]
-
-
+    return best_individual[0]  # Retorna el mejor conjunto de ventanas
 
 
 # =============================================
-# Encontrar ventanas similares
+# Correlación Segura
 # =============================================
-def find_similar_windows(pattern, data, threshold=0.8):
-    """
-    Encuentra ventanas similares a un patrón base.
-    :param pattern: Fragmento patrón (array)
-    :param data: Serie completa
-    :param threshold: Umbral de similitud (por ejemplo, 0.8)
-    :return: Lista de tuplas (inicio, fin) de ventanas similares
-    """
-    matches = []
-    win_len = len(pattern)
-
-    if np.std(pattern) == 0:
-        return matches
-
-    for i in range(len(data) - win_len + 1):
-        window = data[i:i + win_len]
-        if np.std(window) == 0:
-            continue
-        corr = np.corrcoef(pattern, window)[0, 1]
-        if corr >= threshold and not np.isnan(corr):
-            matches.append((i, i + win_len))
-
-    return matches
-    
-    
 def safe_corrcoef(a, b):
-    """Calcula correlación solo si ambos vectores tienen varianza > 0."""
     if np.std(a) == 0 or np.std(b) == 0:
         return np.nan
     return np.corrcoef(a, b)[0, 1]
+
+
+# =============================================
+# Buscar ventanas similares a patrones
+# =============================================
+def find_similar_windows(pattern, data, threshold=0.8, shift_tolerance=3):
+    matches = []
+    win_len = len(pattern)
+
+    if np.std(pattern) < 0.01:
+        return matches
+
+    for i in range(len(data) - win_len + 1):
+        for shift in range(-shift_tolerance, shift_tolerance + 1):
+            shifted_start = max(0, min(len(data) - win_len, i + shift))
+            window = data[shifted_start:shifted_start + win_len]
+
+            if np.std(window) < 0.01:
+                continue
+
+            corr = safe_corrcoef(pattern, window)
+            if corr >= threshold and not np.isnan(corr):
+                matches.append((shifted_start, shifted_start + win_len))
+
+    return matches
+
+
+# =============================================
+# Ejecutar para múltiples tamaños de ventana
+# =============================================
+def run_multiple_window_sizes(data, window_sizes, generations=100, population_size=20, n_windows=3):
+    all_patterns = []
+    for window_length in window_sizes:
+        if window_length > len(data):
+            print(f"Aviso: Tamaño de ventana {window_length} es mayor que la longitud de los datos ({len(data)}). Se omite.")
+            continue
+
+        best_individual = run_evolutionary_algorithm(
+            data, generations, population_size, window_length, n_windows
+        )
+
+        for (start, end) in best_individual:
+            pattern = data[start:end]
+            similar_windows = find_similar_windows(pattern, data)
+            all_patterns.extend(similar_windows)
+
+    return all_patterns

@@ -1,7 +1,7 @@
 import argparse
 import numpy as np
 from preprocessing import load_data, normalize_data
-from algorithm import run_evolutionary_algorithm, find_similar_windows, run_multiple_window_sizes
+from algorithm import run_evolutionary_algorithm, find_similar_windows, run_multiple_window_sizes, detect_flat_patterns
 from visualization import plot_series, plot_detected_patterns
 
 def main():

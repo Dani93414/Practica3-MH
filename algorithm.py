@@ -68,6 +68,8 @@ def tournament_selection(population, fitness_scores, tournament_size=3):
 # Cruce de Individuos con múltiples ventanas
 # =============================================
 def single_point_crossover(parent1, parent2):
+    if len(parent1) < 2:  # No se puede hacer crossover si solo hay una ventana
+        return parent1[:], parent2[:]
     point = random.randint(1, len(parent1) - 1)
     child1 = parent1[:point] + parent2[point:]
     child2 = parent2[:point] + parent1[point:]
@@ -170,5 +172,32 @@ def run_multiple_window_sizes(data, window_sizes, generations=100, population_si
             pattern = data[start:end]
             similar_windows = find_similar_windows(pattern, data)
             all_patterns.extend(similar_windows)
-
+# Detectar patrones planos
+    flat_patterns = detect_flat_patterns(data, window_length=80, min_std=0.005)
+    print("Patrones planos detectados:")
+    for i, (start, end) in enumerate(flat_patterns):
+        print(f"  {i+1}. Índices {start}-{end} (longitud {end - start})")
+# Mezclar todos los patrones
+    all_patterns.extend(flat_patterns)
+    
     return all_patterns
+
+
+# =============================================
+# Detección de Patrones Planos
+# =============================================
+def detect_flat_patterns(data, window_length=80, min_std=0.005):
+    flat_patterns = []
+    i = 0
+    while i < len(data) - window_length:
+        window = data[i:i + window_length]
+        if np.std(window) < min_std:
+            # Expandir la región plana mientras siga cumpliendo la condición
+            start = i
+            while i < len(data) - window_length and np.std(data[i:i + window_length]) < min_std:
+                i += 1
+            end = i + window_length
+            flat_patterns.append((start, min(end, len(data))))
+        else:
+            i += 1
+    return flat_patterns

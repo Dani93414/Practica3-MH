@@ -23,22 +23,36 @@ def initialize_population(population_size, window_length, data_length, data, n_w
 # Evaluación de Fitness (múltiples ventanas)
 # =============================================
 def fitness_function(individual, data):
-    scores = []
+    total_length = len(data)
+    coverage_mask = np.zeros(total_length, dtype=bool)
+    match_count = 0
+    min_pattern_length = 5
+
     for start, end in individual:
-        window = data[start:end]
-        if len(window) < 5 or np.std(window) < 0.01:
+        pattern = data[start:end]
+
+        # Ignorar patrones triviales
+        if len(pattern) < min_pattern_length or np.std(pattern) < 0.01:
             continue
-        similarities = []
-        for i in range(len(data) - len(window)):
-            comp_window = data[i:i + len(window)]
-            if np.std(comp_window) < 0.01:
-                continue
-            dist, _ = fastdtw(window, comp_window)
-            similarity = 1 / (1 + dist)
-            similarities.append(similarity)
-        if similarities:
-            scores.append(np.mean(similarities))
-    return np.mean(scores) if scores else -np.inf
+
+        # Buscar repeticiones del patrón
+        matches = find_similar_windows(pattern, data, threshold=0.85, shift_tolerance=3)
+
+        # Marcar en el "coverage mask" las posiciones cubiertas
+        for m_start, m_end in matches:
+            coverage_mask[m_start:m_end] = True
+        match_count += 1 if matches else 0
+
+    coverage_score = np.sum(coverage_mask) / total_length  # Fracción del tiempo cubierto
+
+    # Penalizar el número de patrones (más patrones = peor)
+    if match_count == 0:
+        return -np.inf  # Sin repeticiones, solución inútil
+
+    penalty = match_count  # Puedes probar con log(match_count + 1) si quieres suavizar
+
+    # Fitness: cobertura menos penalización por número de patrones
+    return coverage_score - 0.01 * penalty
 
 
 # =============================================

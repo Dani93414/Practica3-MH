@@ -132,7 +132,7 @@ def safe_corrcoef(a, b):
 # =============================================
 # Buscar ventanas similares a patrones
 # =============================================
-def find_similar_windows(pattern, data, threshold=0.8, shift_tolerance=3):
+def find_similar_windows(pattern, data, threshold=0.7, shift_tolerance=5):
     matches = []
     win_len = len(pattern)
 
